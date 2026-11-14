@@ -360,5 +360,198 @@
 
     renderCatalog();
   </script>
+
+<!-- AL-SAQR LIVE QR-SPEED SCANNER & SCAN-TO-INVOICE POS -->
+<style>
+#saqrPosFab { position: fixed; bottom: 18px; left: 18px; z-index: 9998; display: flex; gap: 8px; direction: rtl; font-family: system-ui, -apple-system, sans-serif; }
+.saqr-fab-btn { background: linear-gradient(135deg, #d4af37, #b8860b); color: #111; border: none; border-radius: 999px; padding: 12px 18px; font-weight: 800; font-size: 14px; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,0.45); display: flex; align-items: center; gap: 6px; }
+.saqr-fab-btn.dark { background: #1a1a1f; color: #f5d77f; border: 1.5px solid #d4af37; }
+#saqrScanModal, #saqrInvModal { display: none; position: fixed; inset: 0; z-index: 99999; background: rgba(10,10,14,0.92); backdrop-filter: blur(8px); color: #fff; direction: rtl; overflow-y: auto; padding: 14px; font-family: system-ui, -apple-system, sans-serif; }
+.saqr-box { max-width: 680px; margin: 10px auto; background: #16161b; border: 1px solid #333; border-radius: 16px; padding: 16px; }
+.saqr-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.saqr-close { background: #2a2a32; color: #fff; border: none; border-radius: 8px; padding: 6px 12px; cursor: pointer; font-weight: 700; }
+.saqr-cam-wrap { position: relative; width: 100%; max-height: 320px; overflow: hidden; border-radius: 12px; background: #000; border: 2px solid #d4af37; }
+#saqrVideo { width: 100%; max-height: 320px; object-fit: cover; display: block; }
+.saqr-reticle { position: absolute; inset: 14%; border: 2px dashed rgba(212,175,55,0.85); border-radius: 12px; pointer-events: none; box-shadow: 0 0 0 9999px rgba(0,0,0,0.35); }
+.saqr-status { margin: 10px 0; font-size: 13px; color: #f5d77f; font-weight: 700; text-align: center; }
+.saqr-res-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 10px; }
+.saqr-res-card { background: #202028; border: 1px solid #343440; border-radius: 12px; padding: 8px; text-align: center; }
+.saqr-res-card img { width: 100%; height: 150px; object-fit: cover; border-radius: 8px; }
+.saqr-add-btn { width: 100%; margin-top: 6px; padding: 8px; border: none; border-radius: 8px; background: #d4af37; color: #111; font-weight: 800; cursor: pointer; font-size: 13px; }
+.saqr-inv-row { display: flex; align-items: center; gap: 10px; background: #202028; padding: 8px; border-radius: 10px; margin-bottom: 8px; }
+.saqr-inv-row img { width: 52px; height: 52px; object-fit: cover; border-radius: 6px; }
+.saqr-inp { background: #111; color: #fff; border: 1px solid #444; border-radius: 6px; padding: 6px 8px; font-size: 13px; }
+@media print {
+  body * { visibility: hidden !important; }
+  #saqrPrintArea, #saqrPrintArea * { visibility: visible !important; }
+  #saqrPrintArea { position: fixed; inset: 0; background: #fff !important; color: #000 !important; padding: 20px; }
+}
+</style>
+<div id="saqrPosFab">
+  <button class="saqr-fab-btn" onclick="saqrOpenLiveScan()">📷 سكان فوري</button>
+  <button class="saqr-fab-btn dark" onclick="saqrOpenInvoice()">🧾 الفاتورة (<span id="saqrInvCount">0</span>)</button>
+</div>
+<div id="saqrScanModal">
+  <div class="saqr-box">
+    <div class="saqr-hdr">
+      <h3 style="margin:0;color:#f5d77f">⚡ سكان فوري بالذكاء الاصطناعي</h3>
+      <button class="saqr-close" onclick="saqrCloseLiveScan()">إغلاق ✕</button>
+    </div>
+    <div class="saqr-cam-wrap">
+      <video id="saqrVideo" autoplay playsinline muted></video>
+      <div class="saqr-reticle"></div>
+    </div>
+    <canvas id="saqrCanvas" width="32" height="32" style="display:none"></canvas>
+    <div class="saqr-status" id="saqrScanStatus">وجّه الكاميرا على العباية (أو شاشة تلفون العميل) — هيلقط تلقائياً!</div>
+    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+      <button class="saqr-fab-btn" style="padding:8px 14px;font-size:13px" onclick="saqrResumeScan()">🔄 مسح قطعة جديدة</button>
+      <label class="saqr-fab-btn dark" style="padding:8px 14px;font-size:13px;cursor:pointer">🖼️ رفع صورة<input type="file" accept="image/*" style="display:none" onchange="saqrScanFile(event)"></label>
+    </div>
+    <div class="saqr-res-grid" id="saqrScanResults"></div>
+  </div>
+</div>
+<div id="saqrInvModal">
+  <div class="saqr-box" id="saqrPrintArea">
+    <div class="saqr-hdr">
+      <div><h3 style="margin:0;color:#f5d77f">🧾 فاتورة الـ صقر للعبايات الخليجية</h3><small id="saqrInvDate" style="color:#aaa"></small></div>
+      <button class="saqr-close" onclick="document.getElementById('saqrInvModal').style.display='none'">إغلاق ✕</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <input id="saqrCustName" class="saqr-inp" style="flex:1;min-width:160px" placeholder="اسم العميل (اختياري)">
+      <input id="saqrCustPhone" class="saqr-inp" style="width:150px" placeholder="رقم الواتساب">
+    </div>
+    <div id="saqrInvItems"></div>
+    <div style="border-top:1px solid #333;padding-top:10px;margin-top:10px;display:flex;justify-content:space-between;align-items:center;font-size:17px;font-weight:800">
+      <span>الإجمالي الكلي:</span><span id="saqrInvTotal" style="color:#f5d77f">0 ج.م</span>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+      <button class="saqr-fab-btn" style="flex:1;justify-content:center" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+      <button class="saqr-fab-btn dark" style="flex:1;justify-content:center" onclick="saqrSendWhatsApp()">📲 إرسال واتساب</button>
+      <button class="saqr-close" onclick="saqrClearInv()">🗑️ مسح الفاتورة</button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  const SAQR_FPS = [];
+  const ALL_MODELS = MODELS;
+  let stream = null, scanTimer = null, locked = false, lastTop = -1, streak = 0;
+  let invoice = JSON.parse(localStorage.getItem('saqr_pos_inv') || '[]');
+  function getImg(m) { return m.img || m.image || m.photo || m.thumb || (Array.isArray(m.imgs) && m.imgs[0]) || (Array.isArray(m.images) && m.images[0]) || ''; }
+  function getTitle(m, idx) { return m.title || m.name || m.code || m.model || ('موديل #' + (idx+1)); }
+  function getFactory(m) { return m.factory || m.brand || m.channel || ''; }
+  function getPrice(m) { let p = parseFloat(String(m.price || m.cost || '0').replace(/[^0-9.]/g, '')); return isNaN(p) ? 0 : p; }
+  function extractVecFromCanvas(ctx) {
+    const d = ctx.getImageData(0, 0, 32, 32).data;
+    const gray = new Float32Array(1024);
+    for (let i = 0; i < 1024; i++) gray[i] = 0.299*d[i*4] + 0.587*d[i*4+1] + 0.114*d[i*4+2];
+    const vec = [];
+    for (let gy = 0; gy < 4; gy++) {
+      for (let gx = 0; gx < 4; gx++) {
+        let sr=0, sg=0, sb=0, se=0, cnt=0;
+        for (let y = gy*8; y < (gy+1)*8; y++) {
+          for (let x = gx*8; x < (gx+1)*8; x++) {
+            const idx = (y*32 + x);
+            sr += d[idx*4]; sg += d[idx*4+1]; sb += d[idx*4+2];
+            if (x < 31 && y < 31) se += Math.abs(gray[idx] - gray[idx+1]) + Math.abs(gray[idx] - gray[idx+32]);
+            cnt++;
+          }
+        }
+        const sum = sr + sg + sb + 1;
+        vec.push(Math.round((sr * 99) / sum), Math.round((sg * 99) / sum), Math.min(99, Math.round((se / cnt) * 0.45)));
+      }
+    }
+    return vec;
+  }
+  function findTopMatches(vec) {
+    const scored = [];
+    for (let i = 0; i < SAQR_FPS.length; i++) {
+      const [mIdx, fp] = SAQR_FPS[i];
+      let dist = 0;
+      for (let k = 0; k < 48; k++) { const diff = vec[k] - fp[k]; dist += diff * diff; }
+      scored.push([dist, mIdx]);
+    }
+    scored.sort((a, b) => a[0] - b[0]);
+    return scored.slice(0, 4);
+  }
+  function renderMatches(matches) {
+    document.getElementById('saqrScanResults').innerHTML = matches.map(([dist, mIdx]) => {
+      const m = ALL_MODELS[mIdx];
+      return `<div class="saqr-res-card"><img src="${getImg(m)}" loading="lazy"><div style="font-size:12px;font-weight:700;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${getTitle(m, mIdx)}</div><div style="font-size:11px;color:#aaa">${getFactory(m)}</div><div style="font-size:13px;color:#f5d77f;font-weight:800">${getPrice(m) ? getPrice(m) + ' ج.م' : 'حدد السعر'}</div><button class="saqr-add-btn" onclick="saqrAddToInv(${mIdx}, 1)">➕ إضافة للفاتورة</button></div>`;
+    }).join('');
+  }
+  function tickScan() {
+    if (locked) return;
+    const v = document.getElementById('saqrVideo');
+    if (!v || v.readyState < 2) return;
+    const ctx = document.getElementById('saqrCanvas').getContext('2d', { willReadFrequently: true });
+    const vw = v.videoWidth, vh = v.videoHeight, cw = vw * 0.72, ch = vh * 0.72;
+    ctx.drawImage(v, (vw-cw)/2, (vh-ch)/2, cw, ch, 0, 0, 32, 32);
+    const top = findTopMatches(extractVecFromCanvas(ctx));
+    if (!top.length) return;
+    if (top[0][1] === lastTop) streak++; else { lastTop = top[0][1]; streak = 1; }
+    renderMatches(top);
+    if (streak >= 2) { locked = true; if (navigator.vibrate) navigator.vibrate(80); document.getElementById('saqrScanStatus').textContent = '✅ تم اللقط! اختار الموديل واضغط إضافة للفاتورة (أو امسح قطعة جديدة)'; }
+  }
+  window.saqrOpenLiveScan = async function() {
+    document.getElementById('saqrScanModal').style.display = 'block';
+    locked = false; streak = 0; lastTop = -1;
+    document.getElementById('saqrScanStatus').textContent = 'وجّه الكاميرا على العباية (أو شاشة تلفون العميل) — هيلقط تلقائياً!';
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      document.getElementById('saqrVideo').srcObject = stream;
+      clearInterval(scanTimer); scanTimer = setInterval(tickScan, 180);
+    } catch (e) { document.getElementById('saqrScanStatus').textContent = 'الكاميرا مش متاحة هنا — استخدم زرار "رفع صورة" بالأسفل!'; }
+  };
+  window.saqrCloseLiveScan = function() { clearInterval(scanTimer); if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } document.getElementById('saqrScanModal').style.display = 'none'; };
+  window.saqrResumeScan = function() { locked = false; streak = 0; lastTop = -1; document.getElementById('saqrScanStatus').textContent = 'جاري المسح التلقائي... وجّه الكاميرا على القطعة التالية'; };
+  window.saqrScanFile = function(ev) {
+    const file = ev.target.files && ev.target.files[0]; if (!file) return;
+    const img = new Image();
+    img.onload = function() {
+      const ctx = document.getElementById('saqrCanvas').getContext('2d', { willReadFrequently: true });
+      const cw = img.width * 0.72, ch = img.height * 0.72;
+      ctx.drawImage(img, (img.width-cw)/2, (img.height-ch)/2, cw, ch, 0, 0, 32, 32);
+      locked = true; renderMatches(findTopMatches(extractVecFromCanvas(ctx)));
+      document.getElementById('saqrScanStatus').textContent = '✅ تم تحليل الصورة! اختار الموديل المناسب:';
+    };
+    img.src = URL.createObjectURL(file);
+  };
+  function saveInv() { localStorage.setItem('saqr_pos_inv', JSON.stringify(invoice)); document.getElementById('saqrInvCount').textContent = invoice.reduce((s, it) => s + it.qty, 0); }
+  window.saqrAddToInv = function(mIdx, qty) {
+    const m = ALL_MODELS[mIdx]; const ex = invoice.find(x => x.idx === mIdx);
+    if (ex) ex.qty += qty; else invoice.push({ idx: mIdx, title: getTitle(m, mIdx), fac: getFactory(m), img: getImg(m), price: getPrice(m), qty: qty });
+    saveInv(); if (navigator.vibrate) navigator.vibrate(50);
+    document.getElementById('saqrScanStatus').textContent = '🧾 تمت الإضافة للفاتورة! اضغط "مسح قطعة جديدة" أو افتح الفاتورة.';
+  };
+  window.saqrOpenInvoice = function() { document.getElementById('saqrInvDate').textContent = new Date().toLocaleString('ar-EG'); renderInv(); document.getElementById('saqrInvModal').style.display = 'block'; };
+  window.saqrUpdateInv = function(i, field, val) { const num = Math.max(0, parseFloat(val) || 0); if (field === 'qty' && num <= 0) invoice.splice(i, 1); else invoice[i][field] = num; saveInv(); renderInv(); };
+  window.saqrClearInv = function() { invoice = []; saveInv(); renderInv(); };
+  function renderInv() {
+    const box = document.getElementById('saqrInvItems');
+    if (!invoice.length) { box.innerHTML = '<div style="text-align:center;color:#888;padding:24px">الفاتورة فاضية — اعمل سكان لأي عباية لإضافتها!</div>'; document.getElementById('saqrInvTotal').textContent = '0 ج.م'; return; }
+    let total = 0;
+    box.innerHTML = invoice.map((it, i) => { const sub = it.qty * it.price; total += sub; return `<div class="saqr-inv-row"><img src="${it.img}"><div style="flex:1;min-width:0"><div style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${it.title}</div><small style="color:#aaa">${it.fac}</small></div><input class="saqr-inp" type="number" value="${it.qty}" min="1" style="width:58px" onchange="saqrUpdateInv(${i},'qty',this.value)"><input class="saqr-inp" type="number" value="${it.price}" min="0" style="width:74px" onchange="saqrUpdateInv(${i},'price',this.value)"><div style="min-width:68px;text-align:left;font-weight:800;color:#f5d77f">${sub} ج.م</div></div>`; }).join('');
+    document.getElementById('saqrInvTotal').textContent = total.toLocaleString('en-US') + ' ج.م';
+  }
+  window.saqrSendWhatsApp = function() {
+    if (!invoice.length) return;
+    const cname = document.getElementById('saqrCustName').value.trim(), phone = document.getElementById('saqrCustPhone').value.replace(/[^0-9]/g, '');
+    let total = 0, txt = '🧾 *فاتورة الـ صقر للعبايات الخليجية*
+';
+    if (cname) txt += 'العميل: ' + cname + '
+';
+    txt += '-------------------
+';
+    invoice.forEach((it, i) => { const sub = it.qty * it.price; total += sub; txt += `${i+1}. ${it.title} (${it.qty} × ${it.price}) = ${sub} ج.م
+`; });
+    txt += '-------------------
+*الإجمالي: ' + total + ' ج.م*';
+    window.open((phone ? `https://wa.me/${phone}?text=` : 'https://wa.me/?text=') + encodeURIComponent(txt), '_blank');
+  };
+  saveInv();
+})();
+</script>
+
 </body>
 </html>
